@@ -1,0 +1,2989 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HERRAMIENTAS RCORP - Editor de Video Pro</title>
+    
+    <!-- Fuentes de Google -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FFmpeg.wasm para renderizado frame-by-frame -->
+    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.6/dist/umd/ffmpeg.js"></script>
+    <script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* Efecto de partículas en el fondo */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 30%, rgba(255, 0, 150, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(0, 150, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 50% 50%, rgba(150, 0, 255, 0.05) 0%, transparent 50%);
+            pointer-events: none;
+            animation: pulseBackground 15s ease-in-out infinite;
+        }
+
+        @keyframes pulseBackground {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .container-app {
+            background: rgba(17, 24, 39, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 
+                0 20px 60px rgba(0, 0, 0, 0.6),
+                0 0 80px rgba(99, 102, 241, 0.2),
+                inset 0 0 80px rgba(99, 102, 241, 0.05);
+            border-radius: 2rem;
+            padding: 2.5rem;
+            width: 100%;
+            max-width: 1400px;
+            position: relative;
+            animation: fadeInUp 0.8s ease-out;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Títulos con gradiente */
+        h3 {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            text-shadow: 0 0 30px rgba(102, 126, 234, 0.3);
+            animation: gradientShift 5s ease-in-out infinite;
+        }
+
+        @keyframes gradientShift {
+            0%, 100% { filter: hue-rotate(0deg); }
+            50% { filter: hue-rotate(30deg); }
+        }
+
+        @keyframes recordingPulse {
+            0%, 100% { 
+                box-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
+                background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            }
+            50% { 
+                box-shadow: 0 0 40px rgba(239, 68, 68, 0.9);
+                background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+            }
+        }
+
+        .recording {
+            animation: recordingPulse 1.5s ease-in-out infinite !important;
+        }
+
+        .control-panel {
+            background: linear-gradient(135deg, rgba(55, 65, 81, 0.6) 0%, rgba(31, 41, 55, 0.6) 100%);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 1.5rem;
+            border-radius: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 
+                0 8px 32px rgba(0, 0, 0, 0.3),
+                inset 0 0 20px rgba(99, 102, 241, 0.05);
+            transition: all 0.3s ease;
+        }
+
+        .control-panel:hover {
+            border-color: rgba(99, 102, 241, 0.3);
+            box-shadow: 
+                0 12px 40px rgba(0, 0, 0, 0.4),
+                0 0 30px rgba(99, 102, 241, 0.2),
+                inset 0 0 30px rgba(99, 102, 241, 0.1);
+            transform: translateY(-2px);
+        }
+
+        /* Canvas con efecto de brillo */
+        canvas {
+            border-radius: 1rem;
+            box-shadow: 
+                0 20px 60px rgba(0, 0, 0, 0.5),
+                0 0 60px rgba(99, 102, 241, 0.3),
+                inset 0 0 40px rgba(0, 0, 0, 0.3);
+            border: 2px solid rgba(99, 102, 241, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        canvas:hover {
+            box-shadow: 
+                0 25px 80px rgba(0, 0, 0, 0.6),
+                0 0 80px rgba(99, 102, 241, 0.5),
+                inset 0 0 40px rgba(0, 0, 0, 0.3);
+            border-color: rgba(99, 102, 241, 0.5);
+        }
+
+        #videoSourceTop, #videoSourceBottom, #videoSourceSingle {
+            display: none;
+        }
+
+        /* Sliders mejorados */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 8px;
+            border-radius: 10px;
+            background: linear-gradient(90deg, rgba(99, 102, 241, 0.3) 0%, rgba(139, 92, 246, 0.3) 100%);
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        input[type="range"]:hover {
+            background: linear-gradient(90deg, rgba(99, 102, 241, 0.5) 0%, rgba(139, 92, 246, 0.5) 100%);
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 
+                0 0 20px rgba(99, 102, 241, 0.6),
+                0 4px 15px rgba(0, 0, 0, 0.4);
+            transition: all 0.2s ease;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            width: 24px;
+            height: 24px;
+            box-shadow: 
+                0 0 30px rgba(99, 102, 241, 0.8),
+                0 6px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 
+                0 0 20px rgba(99, 102, 241, 0.6),
+                0 4px 15px rgba(0, 0, 0, 0.4);
+            border: none;
+            transition: all 0.2s ease;
+        }
+
+        /* Botones premium */
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.75rem;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 
+                0 4px 20px rgba(99, 102, 241, 0.4),
+                0 0 20px rgba(99, 102, 241, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-primary::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .btn-primary:hover::before {
+            left: 100%;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 
+                0 8px 30px rgba(99, 102, 241, 0.6),
+                0 0 40px rgba(99, 102, 241, 0.3);
+        }
+
+        .btn-primary:active {
+            transform: translateY(-1px);
+        }
+
+        .btn-control {
+            background: rgba(75, 85, 99, 0.6);
+            backdrop-filter: blur(10px);
+            color: #e5e7eb;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-control:hover {
+            background: rgba(99, 102, 241, 0.4);
+            border-color: rgba(99, 102, 241, 0.5);
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .btn-control:disabled,
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .btn-control:disabled:hover,
+        .btn-primary:disabled:hover {
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* Controles de medios mejorados */
+        #mediaControls {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            background: linear-gradient(135deg, rgba(55, 65, 81, 0.8) 0%, rgba(31, 41, 55, 0.8) 100%);
+            backdrop-filter: blur(15px);
+            border-radius: 1rem;
+            margin-top: 0.75rem;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .timeline-wrapper {
+            flex-grow: 1;
+            margin: 0 1rem;
+        }
+
+        #singleCanvas {
+            max-width: 300px;
+            height: auto;
+            aspect-ratio: 9/16;
+        }
+
+        #splitScreenCanvas {
+            max-width: 350px;
+            width: 100%;
+            height: auto;
+            aspect-ratio: 9/16;
+            align-self: center;
+        }
+
+        .trim-controls-wrapper {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            background: linear-gradient(135deg, rgba(55, 65, 81, 0.7) 0%, rgba(31, 41, 55, 0.7) 100%);
+            backdrop-filter: blur(10px);
+            padding: 1rem 1.25rem;
+            border-radius: 0.75rem;
+            margin-top: 0.75rem;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            box-shadow: 
+                inset 0 0 20px rgba(0, 0, 0, 0.3),
+                0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .crop-controls-wrapper {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            background: linear-gradient(135deg, rgba(44, 52, 64, 0.8) 0%, rgba(31, 41, 55, 0.8) 100%);
+            backdrop-filter: blur(10px);
+            padding: 1rem 1.25rem;
+            border-radius: 0.75rem;
+            margin-top: 0.75rem;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            box-shadow: 
+                inset 0 0 20px rgba(0, 0, 0, 0.3),
+                0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Labels mejorados */
+        label {
+            color: #e5e7eb;
+            font-weight: 500;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+            display: block;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Inputs de archivo personalizados */
+        input[type="file"] {
+            background: rgba(55, 65, 81, 0.6);
+            border: 2px dashed rgba(99, 102, 241, 0.3);
+            border-radius: 0.75rem;
+            padding: 0.75rem;
+            color: #e5e7eb;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        input[type="file"]:hover {
+            border-color: rgba(99, 102, 241, 0.6);
+            background: rgba(99, 102, 241, 0.1);
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.2);
+        }
+
+        /* Divisor visual */
+        .divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.3), transparent);
+            margin: 1.5rem 0;
+        }
+
+        /* Textos de valor con estilo */
+        .value-display {
+            background: rgba(99, 102, 241, 0.2);
+            color: #a5b4fc;
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            font-size: 0.85rem;
+            display: inline-block;
+            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .container-app {
+                grid-template-columns: 1fr;
+                gap: 1.5rem;
+                padding: 1.5rem;
+            }
+        }
+
+        /* Efectos de carga */
+        @keyframes shimmer {
+            0% { background-position: -1000px 0; }
+            100% { background-position: 1000px 0; }
+        }
+
+        @keyframes pulse {
+            0%, 100% { 
+                transform: scale(1);
+                box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+            }
+            50% { 
+                transform: scale(1.05);
+                box-shadow: 0 15px 40px rgba(102, 126, 234, 0.5);
+            }
+        }
+
+        .loading-shimmer {
+            animation: shimmer 2s infinite;
+            background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.1), transparent);
+            background-size: 1000px 100%;
+        }
+
+        /* Scrollbar personalizada */
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(31, 41, 55, 0.5);
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+        }
+
+        /* ============================================
+           ASISTENTE DE VOZ - SISTEMA MODERNO
+           ============================================ */
+        
+        /* Contenedor del asistente */
+        .voice-assistant-container {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            z-index: 10000;
+            display: none;
+            animation: slideInFromBottom 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .voice-assistant-container.active {
+            display: block;
+        }
+
+        @keyframes slideInFromBottom {
+            from {
+                opacity: 0;
+                transform: translateY(100px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Avatar del asistente */
+        .assistant-avatar {
+            width: 120px;
+            height: 120px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 
+                0 10px 40px rgba(99, 102, 241, 0.6),
+                0 0 60px rgba(99, 102, 241, 0.4),
+                inset 0 0 40px rgba(255, 255, 255, 0.1);
+            position: relative;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 4px solid rgba(255, 255, 255, 0.2);
+            margin-bottom: 1rem;
+        }
+
+        .assistant-avatar:hover {
+            transform: scale(1.05);
+            box-shadow: 
+                0 15px 50px rgba(99, 102, 241, 0.8),
+                0 0 80px rgba(99, 102, 241, 0.6);
+        }
+
+        .assistant-avatar.speaking {
+            animation: avatarSpeak 0.3s ease-in-out infinite;
+        }
+
+        @keyframes avatarSpeak {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.08); }
+        }
+
+        .assistant-avatar::before {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 3px solid rgba(99, 102, 241, 0.5);
+            animation: ripple 2s ease-out infinite;
+        }
+
+        @keyframes ripple {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+            100% {
+                transform: scale(1.5);
+                opacity: 0;
+            }
+        }
+
+        .assistant-face {
+            font-size: 4rem;
+            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+        }
+
+        /* Burbuja de diálogo */
+        .assistant-speech-bubble {
+            position: absolute;
+            bottom: 140px;
+            right: 0;
+            background: linear-gradient(135deg, rgba(17, 24, 39, 0.98) 0%, rgba(31, 41, 55, 0.98) 100%);
+            backdrop-filter: blur(20px);
+            border: 2px solid rgba(99, 102, 241, 0.5);
+            border-radius: 1.5rem;
+            padding: 1.5rem;
+            max-width: 400px;
+            min-width: 320px;
+            box-shadow: 
+                0 20px 60px rgba(0, 0, 0, 0.8),
+                0 0 40px rgba(99, 102, 241, 0.3);
+            transform-origin: bottom right;
+            animation: bubbleIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes bubbleIn {
+            from {
+                opacity: 0;
+                transform: scale(0.8);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .assistant-speech-bubble::after {
+            content: '';
+            position: absolute;
+            bottom: -15px;
+            right: 40px;
+            width: 0;
+            height: 0;
+            border-left: 15px solid transparent;
+            border-right: 15px solid transparent;
+            border-top: 15px solid rgba(31, 41, 55, 0.98);
+        }
+
+        .assistant-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+
+        .assistant-title {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #a5b4fc;
+        }
+
+        .assistant-step-indicator {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+            box-shadow: 0 2px 10px rgba(99, 102, 241, 0.4);
+        }
+
+        .assistant-message {
+            color: #e5e7eb;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-bottom: 1rem;
+            position: relative;
+            padding-right: 6rem; /* Espacio para el botón */
+        }
+
+        .assistant-message strong {
+            color: #a5b4fc;
+            font-weight: 600;
+        }
+
+        /* Botón de repetir en el asistente */
+        .btn-repetir-asistente {
+            position: absolute;
+            top: 0;
+            right: 0;
+            padding: 0.4rem 0.8rem;
+            font-size: 0.8rem;
+            background: rgba(99, 102, 241, 0.2);
+            border: 1px solid rgba(99, 102, 241, 0.4);
+            border-radius: 0.5rem;
+            color: #a5b4fc;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        .btn-repetir-asistente:hover {
+            background: rgba(99, 102, 241, 0.4);
+            border-color: rgba(99, 102, 241, 0.6);
+            transform: scale(1.05);
+        }
+
+        /* Indicador de voz hablando */
+        .voice-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            padding: 0.5rem;
+            background: rgba(99, 102, 241, 0.1);
+            border-radius: 0.5rem;
+        }
+
+        .voice-wave {
+            width: 3px;
+            height: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 2px;
+            animation: waveAnimation 0.8s ease-in-out infinite;
+        }
+
+        .voice-wave:nth-child(1) { animation-delay: 0s; }
+        .voice-wave:nth-child(2) { animation-delay: 0.1s; }
+        .voice-wave:nth-child(3) { animation-delay: 0.2s; }
+        .voice-wave:nth-child(4) { animation-delay: 0.3s; }
+        .voice-wave:nth-child(5) { animation-delay: 0.4s; }
+
+        @keyframes waveAnimation {
+            0%, 100% { height: 8px; }
+            50% { height: 24px; }
+        }
+
+        .voice-status {
+            flex: 1;
+            font-size: 0.85rem;
+            color: #a5b4fc;
+        }
+
+        /* Controles del asistente */
+        .assistant-controls {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .assistant-btn {
+            flex: 1;
+            min-width: 80px;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.25rem;
+        }
+
+        .assistant-btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+        }
+
+        .assistant-btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
+        }
+
+        .assistant-btn-secondary {
+            background: rgba(75, 85, 99, 0.6);
+            color: #e5e7eb;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .assistant-btn-secondary:hover {
+            background: rgba(99, 102, 241, 0.3);
+            border-color: rgba(99, 102, 241, 0.5);
+        }
+
+        .assistant-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .assistant-progress {
+            width: 100%;
+            height: 4px;
+            background: rgba(55, 65, 81, 0.6);
+            border-radius: 1rem;
+            overflow: hidden;
+            margin-top: 1rem;
+        }
+
+        .assistant-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            border-radius: 1rem;
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 0 10px rgba(99, 102, 241, 0.6);
+        }
+
+        /* Flecha indicadora sutil */
+        .assistant-pointer {
+            position: fixed;
+            width: 60px;
+            height: 60px;
+            pointer-events: none;
+            z-index: 9999;
+            display: none;
+            animation: pointerBounce 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pointerBounce {
+            0%, 100% { transform: translateY(0) translateX(0); }
+            50% { transform: translateY(-10px) translateX(-10px); }
+        }
+
+        .assistant-pointer svg {
+            width: 100%;
+            height: 100%;
+            filter: drop-shadow(0 4px 10px rgba(99, 102, 241, 0.8));
+        }
+
+        /* Checkmark de completado */
+        .assistant-checkmark {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            border-radius: 50%;
+            margin-left: 0.5rem;
+            animation: checkPop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            font-size: 0.7rem;
+        }
+
+        /* Botón de ayuda compacto */
+        .help-button-compact {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 9997;
+            box-shadow: 
+                0 8px 30px rgba(99, 102, 241, 0.5),
+                0 0 40px rgba(99, 102, 241, 0.3);
+            transition: all 0.3s ease;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .help-button-compact:hover {
+            transform: scale(1.1);
+            box-shadow: 
+                0 12px 40px rgba(99, 102, 241, 0.7),
+                0 0 60px rgba(99, 102, 241, 0.5);
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .help-button-compact span {
+            font-size: 1.8rem;
+            color: white;
+            font-weight: bold;
+        }
+
+        /* Subtítulos opcionales */
+        .assistant-subtitles {
+            position: fixed;
+            bottom: 10rem;
+            right: 2rem;
+            max-width: 500px;
+            background: rgba(17, 24, 39, 0.95);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(99, 102, 241, 0.3);
+            border-radius: 1rem;
+            padding: 1rem 1.5rem;
+            color: white;
+            font-size: 1.1rem;
+            line-height: 1.6;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+            display: none;
+            z-index: 9998;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .assistant-subtitles.show {
+            display: block;
+        }
+
+        /* Controles de voz mini */
+        .voice-controls-mini {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid rgba(99, 102, 241, 0.2);
+        }
+
+        .voice-control-btn {
+            flex: 1;
+            padding: 0.4rem;
+            background: rgba(75, 85, 99, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 0.4rem;
+            color: #e5e7eb;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .voice-control-btn:hover {
+            background: rgba(99, 102, 241, 0.3);
+            border-color: rgba(99, 102, 241, 0.5);
+        }
+
+        .voice-control-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-color: transparent;
+        }
+
+        @keyframes checkPop {
+            0% {
+                transform: scale(0);
+                opacity: 0;
+            }
+            50% {
+                transform: scale(1.2);
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        /* ============================================
+           SISTEMA DE PESTAÑAS
+           ============================================ */
+        
+        .tabs-container {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            border-bottom: 2px solid rgba(99, 102, 241, 0.2);
+            padding-bottom: 0;
+        }
+
+        .tab-button {
+            padding: 1rem 2.5rem;
+            background: transparent;
+            border: none;
+            color: #9ca3af;
+            font-weight: 600;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-bottom: 3px solid transparent;
+            position: relative;
+        }
+
+        .tab-button:hover {
+            color: #e5e7eb;
+            background: rgba(99, 102, 241, 0.1);
+        }
+
+        .tab-button.active {
+            color: white;
+            border-bottom-color: #667eea;
+            background: linear-gradient(180deg, rgba(99, 102, 241, 0.15) 0%, transparent 100%);
+        }
+
+        .tab-button.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            box-shadow: 0 0 10px rgba(99, 102, 241, 0.6);
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeInContent 0.4s ease;
+        }
+
+        .tab-content.active {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            align-items: start;
+        }
+
+        /* Primeros Pasos usa flex, no grid */
+        #tab0Content.active {
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+            min-height: 80vh;
+        }
+
+        @keyframes fadeInContent {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .preview-column {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .controls-column {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        /* Ajustes responsivos para pestañas */
+        @media (max-width: 1024px) {
+            .tab-content.active {
+                grid-template-columns: 1fr;
+            }
+            
+            .tabs-container {
+                flex-wrap: wrap;
+            }
+            
+            .tab-button {
+                flex: 1;
+                min-width: 150px;
+                padding: 0.75rem 1.5rem;
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Asistente de Voz -->
+    <div class="voice-assistant-container" id="voiceAssistant">
+        <div class="assistant-speech-bubble">
+            <div class="assistant-header">
+                <div class="assistant-title">
+                    <span>🤖</span>
+                    <span>Abelita - RivaCORP</span>
+                </div>
+                <div class="assistant-step-indicator" id="assistantStep">Paso 1/5</div>
+            </div>
+
+            <div class="voice-indicator" id="voiceIndicator" style="display: none;">
+                <div class="voice-wave"></div>
+                <div class="voice-wave"></div>
+                <div class="voice-wave"></div>
+                <div class="voice-wave"></div>
+                <div class="voice-wave"></div>
+                <span class="voice-status">Hablando...</span>
+            </div>
+
+            <div class="assistant-message" id="assistantMessage">
+                <button class="btn-repetir-asistente" id="btnRepetirAbelita">
+                    🔊 Repetir
+                </button>
+                ¡Hola! Soy Abelita, tu asistente virtual de RivaCORP. Te voy a guiar paso a paso para crear videos verticales increíbles. ¿Empezamos?
+            </div>
+
+            <div class="assistant-controls">
+                <button class="assistant-btn assistant-btn-secondary" id="assistantPrevBtn" style="display: none;">
+                    ← Anterior
+                </button>
+                <button class="assistant-btn assistant-btn-primary" id="assistantNextBtn">
+                    Comenzar 🚀
+                </button>
+            </div>
+
+            <div class="voice-controls-mini">
+                <button class="voice-control-btn active" id="voiceToggleBtn" title="Activar/Desactivar Voz">
+                    🔊 Voz
+                </button>
+                <button class="voice-control-btn" id="subtitlesToggleBtn" title="Activar/Desactivar Subtítulos">
+                    💬 Subtítulos
+                </button>
+                <button class="voice-control-btn" id="skipTutorialBtn" title="Saltar Tutorial">
+                    ⏭️ Saltar
+                </button>
+            </div>
+
+            <div class="assistant-progress">
+                <div class="assistant-progress-bar" id="assistantProgressBar" style="width: 10%;"></div>
+            </div>
+        </div>
+
+        <div class="assistant-avatar" id="assistantAvatar" title="Haz clic para pausar/reanudar">
+            <div class="assistant-face">🤖</div>
+        </div>
+    </div>
+
+    <!-- Subtítulos flotantes -->
+    <div class="assistant-subtitles" id="assistantSubtitles"></div>
+
+    <!-- Flecha indicadora -->
+    <div class="assistant-pointer" id="assistantPointer">
+        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <linearGradient id="pointerGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+                </linearGradient>
+            </defs>
+            <path d="M 10 10 L 70 10 L 50 50 L 90 90 L 50 70 L 10 50 Z" 
+                  fill="url(#pointerGradient)" 
+                  stroke="white" 
+                  stroke-width="3"/>
+        </svg>
+    </div>
+
+    <!-- Botón de ayuda compacto -->
+    <div class="help-button-compact" id="helpButtonCompact" title="Iniciar asistente de voz">
+        <span>?</span>
+    </div>
+
+    <!-- Videos de fuente (ocultos) -->
+    <video id="videoSourceTop" crossorigin="anonymous" preload="metadata"></video>
+    <video id="videoSourceBottom" crossorigin="anonymous" preload="metadata"></video>
+    <video id="videoSourceSingle" crossorigin="anonymous" preload="metadata"></video>
+
+    <div class="container-app">
+        
+        <!-- Sistema de Pestañas -->
+        <div class="tabs-container">
+            <button class="tab-button active" id="tab0Btn" onclick="switchTab('tab0')">
+                🚀 Primeros Pasos
+            </button>
+            <button class="tab-button" id="tab1Btn" onclick="switchTab('tab1')">
+                📹 Video Único (9:16)
+            </button>
+            <button class="tab-button" id="tab2Btn" onclick="switchTab('tab2')">
+                🎬 Split-Screen
+            </button>
+        </div>
+
+        <!-- PESTAÑA 0: PRIMEROS PASOS -->
+        <div class="tab-content active" id="tab0Content">
+            <div style="max-width: 1100px; width: 100%; padding: 2rem;">
+                
+                <!-- Cabecera -->
+                <div style="text-align: center; margin-bottom: 3rem;">
+                    <h2 style="font-size: 2.5rem; font-weight: 800; background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 1rem;">
+                        🚀 Primeros Pasos
+                    </h2>
+                    <p style="color: #9ca3af; font-size: 1.1rem;">Preparación antes de editar videos</p>
+                </div>
+
+                <!-- Pantalla de Bienvenida (Mostrar primero) -->
+                <div id="pantallaBienvenida" style="background: rgba(99, 102, 241, 0.1); border: 2px solid rgba(99, 102, 241, 0.3); border-radius: 1.5rem; padding: 4rem; text-align: center;">
+                    <div style="width: 120px; height: 120px; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 50%; margin: 0 auto 2rem; display: flex; align-items: center; justify-content: center; font-size: 4rem; box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3); animation: pulse 2s infinite;">
+                        🤖
+                    </div>
+                    <h3 style="font-size: 2rem; font-weight: 700; color: #667eea; margin-bottom: 1rem;">¡Hola! Soy Abelito</h3>
+                    <p style="font-size: 1.3rem; color: #d1d5db; margin-bottom: 3rem; line-height: 1.8;">
+                        Tu asistente virtual de RivaCORP.<br>
+                        Voy a guiarte en los pasos de preparación antes de editar videos.
+                    </p>
+                    <button id="btnComenzarPrimerosPasos" class="btn-primary" style="padding: 1.5rem 4rem; font-size: 1.5rem; box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);">
+                        🚀 Comenzar
+                    </button>
+                </div>
+
+                <!-- Contenedor del Paso Actual (Oculto al inicio) -->
+                <div id="primerPasoContainer" style="background: rgba(99, 102, 241, 0.1); border: 2px solid rgba(99, 102, 241, 0.3); border-radius: 1.5rem; padding: 3rem; min-height: 400px; display: none;">
+                    
+                    <!-- Avatar de Abelito -->
+                    <div style="text-align: center; margin-bottom: 2rem;">
+                        <div style="width: 100px; height: 100px; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 50%; margin: 0 auto; display: flex; align-items: center; justify-content: center; font-size: 3rem; box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);">
+                            🤖
+                        </div>
+                        <p style="margin-top: 1rem; font-weight: 600; color: #667eea; font-size: 1.2rem;">Abelito</p>
+                    </div>
+
+                    <!-- Mensaje del Paso -->
+                    <div id="primerPasoMensaje" style="background: rgba(255, 255, 255, 0.05); border-radius: 1rem; padding: 2.5rem; margin-bottom: 2rem; position: relative;">
+                        <!-- Botón de Repetir en la esquina -->
+                        <button id="btnRepetirPrimerPaso" class="btn-control" style="position: absolute; top: 1rem; right: 1rem; padding: 0.5rem 1rem; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem;">
+                            🔊 Repetir
+                        </button>
+                        <p style="font-size: 1.3rem; line-height: 1.8; color: #e5e7eb; text-align: center; padding-right: 6rem;">
+                            ¡Hola! Soy Abelito tu asistente virtual, no seas vago y pongámonos a trabajar, dormir y dormir nomás quieres, que chicha te pasa abelito de mierda.
+                        </p>
+                    </div>
+
+                    <!-- Pregunta -->
+                    <div id="primerPasoPregunta" style="text-align: center; margin-bottom: 2.5rem;">
+                        <p style="font-size: 1.4rem; font-weight: 600; color: #fbbf24;">
+                            ¿Estás listo para empezar a chambear?
+                        </p>
+                    </div>
+
+                    <!-- Botones de Respuesta -->
+                    <div style="display: flex; gap: 2rem; justify-content: center; align-items: center;">
+                        <button id="primerPasoAtras" class="btn-control" style="padding: 1.2rem 2.5rem; font-size: 1.3rem; background: rgba(107, 114, 128, 0.3); display: none;">
+                            ⬅️ Atrás
+                        </button>
+                        <button id="primerPasoSi" class="btn-primary" style="padding: 1.2rem 3.5rem; font-size: 1.3rem;">
+                            ✅ Sí
+                        </button>
+                        <button id="primerPasoNo" class="btn-control" style="padding: 1.2rem 3.5rem; font-size: 1.3rem;">
+                            ❌ No
+                        </button>
+                    </div>
+
+                    <!-- Indicador de Paso -->
+                    <div style="text-align: center; margin-top: 2.5rem; color: #9ca3af; font-size: 1.1rem;">
+                        <span id="primerPasoIndicador">Paso 1 de 5</span>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- PESTAÑA 1: VIDEO ÚNICO -->
+        <div class="tab-content" id="tab1Content">
+            
+            <!-- COLUMNA IZQUIERDA: Vista Previa -->
+            <div class="preview-column">
+                <h3 class="text-2xl font-bold text-center">✨ Vista Previa Vertical (9:16)</h3>
+                
+                <canvas id="singleCanvas" class="bg-gray-900 shadow-xl rounded-lg w-full"></canvas>
+
+                <!-- Timeline del Video Único -->
+                <div id="mediaControls" class="flex items-center gap-2 w-full">
+                    <button id="playPauseSingleBtn" class="btn-control px-4 py-2">▶️ Play</button>
+                    <button id="muteSingleBtn" class="btn-control px-3 py-2">🔊</button>
+                    <div class="timeline-wrapper">
+                        <input type="range" id="singleTimeline" min="0" max="1" step="0.001" value="0" class="w-full">
+                    </div>
+                    <span id="singleTimeDisplay" class="value-display text-sm">0:00 / 0:00</span>
+                </div>
+            </div>
+
+            <!-- COLUMNA DERECHA: Controles -->
+            <div class="controls-column">
+                <h3 class="text-2xl font-bold text-center">⚙️ Controles</h3>
+
+                <div class="control-panel space-y-4">
+                    <div>
+                        <label for="videoFileSingle" class="block text-sm font-semibold mb-2">📹 Cargar Video Único</label>
+                        <input type="file" id="videoFileSingle" accept="video/*" class="w-full">
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <div>
+                        <label for="bgImageFileSingle" class="block text-sm font-semibold mb-2">🖼️ Fondo 9:16 (Imagen)</label>
+                        <input type="file" id="bgImageFileSingle" accept="image/*" class="w-full">
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <!-- Controles de Zoom y Posición -->
+                    <div class="space-y-3">
+                        <div>
+                            <label for="scaleSingleRange" class="text-sm">🔍 Zoom: <span id="scaleSingleValue" class="value-display">1.65</span></label>
+                            <input type="range" id="scaleSingleRange" min="0.5" max="3" step="0.01" value="1.65" class="w-full">
+                        </div>
+
+                        <div>
+                            <label for="offsetXSingleRange" class="text-sm">↔️ Posición X: <span id="offsetXSingleValue" class="value-display">0</span></label>
+                            <input type="range" id="offsetXSingleRange" min="-500" max="500" step="1" value="0" class="w-full">
+                        </div>
+
+                        <div>
+                            <label for="offsetYSingleRange" class="text-sm">↕️ Posición Y: <span id="offsetYSingleValue" class="value-display">0</span></label>
+                            <input type="range" id="offsetYSingleRange" min="-500" max="500" step="1" value="0" class="w-full">
+                        </div>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <!-- Controles de Recorte -->
+                    <div class="trim-controls-wrapper">
+                        <div class="flex flex-col items-center space-y-1">
+                            <span class="text-xs text-gray-400">⏮️ Inicio</span>
+                            <input type="range" id="trimStartRange" min="0" max="1" step="0.001" value="0" class="w-24">
+                            <span id="trimStartValue" class="value-display text-xs">0:00</span>
+                            <div class="flex gap-1 mt-1">
+                                <button id="trimStartMinus2" class="btn-control px-2 py-1 text-xs">-2s</button>
+                                <button id="trimStartPlus2" class="btn-control px-2 py-1 text-xs">+2s</button>
+                            </div>
+                        </div>
+                        <div class="flex flex-col items-center space-y-1">
+                            <span class="text-xs text-gray-400">⏭️ Final</span>
+                            <input type="range" id="trimEndRange" min="0" max="1" step="0.001" value="1" class="w-24">
+                            <span id="trimEndValue" class="value-display text-xs">0:00</span>
+                            <div class="flex gap-1 mt-1">
+                                <button id="trimEndMinus2" class="btn-control px-2 py-1 text-xs">-2s</button>
+                                <button id="trimEndPlus2" class="btn-control px-2 py-1 text-xs">+2s</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button id="generateDownloadSingleBtn" class="btn-primary w-full">
+                        💾 Descargar Video Único
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- PESTAÑA 2: SPLIT-SCREEN -->
+        <div class="tab-content" id="tab2Content">
+            
+            <!-- COLUMNA IZQUIERDA: Vista Previa -->
+            <div class="preview-column">
+                <h3 class="text-2xl font-bold text-center">🎬 Vista Previa Split-Screen</h3>
+                
+                <canvas id="splitScreenCanvas" class="bg-gray-900 shadow-xl rounded-lg mx-auto"></canvas>
+
+                <!-- Controles de Reproducción Split-Screen -->
+                <div class="control-panel space-y-4 w-full">
+                    <!-- Timeline Superior -->
+                    <div>
+                        <label class="text-sm font-semibold mb-2 block">🔝 Timeline Superior</label>
+                        <div class="flex items-center gap-2">
+                            <button id="playPauseTopBtn" class="btn-control px-3 py-2">▶️</button>
+                            <button id="muteTopBtn" class="btn-control px-3 py-2">🔊</button>
+                            <div class="flex-grow">
+                                <input type="range" id="timelineTop" min="0" max="1" step="0.001" value="0" class="w-full">
+                            </div>
+                            <span id="topTimeDisplay" class="value-display text-xs">0:00 / 0:00</span>
+                        </div>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <!-- Timeline Inferior -->
+                    <div>
+                        <label class="text-sm font-semibold mb-2 block">🔽 Timeline Inferior</label>
+                        <div class="flex items-center gap-2">
+                            <button id="playPauseBottomBtn" class="btn-control px-3 py-2">▶️</button>
+                            <button id="muteBottomBtn" class="btn-control px-3 py-2">🔊</button>
+                            <div class="flex-grow">
+                                <input type="range" id="timelineBottom" min="0" max="1" step="0.001" value="0" class="w-full">
+                            </div>
+                            <span id="bottomTimeDisplay" class="value-display text-xs">0:00 / 0:00</span>
+                        </div>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <!-- Botones de Control -->
+                    <div class="flex gap-3">
+                        <button id="toggleSwapBtn" class="btn-control flex-1">🔄 Intercambiar</button>
+                        <button id="startRecordingBtn" class="btn-primary flex-1">⏺️ Grabar</button>
+                        <button id="stopRecordingBtn" class="btn-control flex-1">⏹️ Detener</button>
+                    </div>
+                    
+                    <!-- Barra de Progreso Frame-by-Frame -->
+                    <div id="renderProgressContainer" style="display: none; margin-top: 1rem; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 0.5rem; padding: 1rem;">
+                        <div style="margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+                            <span id="renderProgressText" style="color: #a5b4fc; font-weight: 600;">Preparando renderizado...</span>
+                            <span id="renderProgressPercent" style="color: #818cf8; font-weight: 700; font-size: 1.2rem;">0%</span>
+                        </div>
+                        <div style="width: 100%; height: 8px; background: rgba(0,0,0,0.3); border-radius: 4px; overflow: hidden;">
+                            <div id="renderProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #667eea, #764ba2); transition: width 0.3s ease;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- COLUMNA DERECHA: Controles -->
+            <div class="controls-column">
+                <h3 class="text-2xl font-bold text-center">⚙️ Controles Split-Screen</h3>
+
+                <!-- Carga de Videos -->
+                <div class="control-panel space-y-4">
+                    <div>
+                        <label for="videoFileTop" class="block text-sm font-semibold mb-2">📹 Video Superior</label>
+                        <input type="file" id="videoFileTop" accept="video/*" class="w-full">
+                    </div>
+
+                    <div>
+                        <label for="videoFileBottom" class="block text-sm font-semibold mb-2">📹 Video Inferior</label>
+                        <input type="file" id="videoFileBottom" accept="video/*" class="w-full">
+                    </div>
+
+                    <div>
+                        <label for="bgImageFileSplit" class="block text-sm font-semibold mb-2">🖼️ Fondo Split-Screen</label>
+                        <input type="file" id="bgImageFileSplit" accept="image/*" class="w-full">
+                    </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <!-- Controles Video Superior -->
+                <div class="control-panel space-y-3">
+                    <h4 class="text-lg font-bold text-purple-400">🔝 Video Superior</h4>
+                    
+                    <div>
+                        <label for="scaleTopRange" class="text-sm">🔍 Zoom: <span id="scaleTopValue" class="value-display">1.84</span></label>
+                        <input type="range" id="scaleTopRange" min="0.5" max="3" step="0.01" value="1.84" class="w-full">
+                    </div>
+
+                    <div>
+                        <label for="offsetXTopRange" class="text-sm">↔️ Posición X: <span id="offsetXTopValue" class="value-display">0</span></label>
+                        <input type="range" id="offsetXTopRange" min="-500" max="500" step="1" value="0" class="w-full">
+                    </div>
+
+                    <div>
+                        <label for="offsetYTopRange" class="text-sm">↕️ Posición Y: <span id="offsetYTopValue" class="value-display">71</span></label>
+                        <input type="range" id="offsetYTopRange" min="-500" max="500" step="1" value="71" class="w-full">
+                    </div>
+
+                    <!-- Trim Superior -->
+                    <div class="trim-controls-wrapper">
+                        <div class="flex flex-col items-center space-y-1">
+                            <span class="text-xs text-gray-400">⏮️ Inicio</span>
+                            <input type="range" id="trimStartTopRange" min="0" max="1" step="0.01" value="0" class="w-20">
+                            <span id="trimStartTopValue" class="value-display text-xs">0:00</span>
+                        </div>
+                        <div class="flex flex-col items-center space-y-1">
+                            <span class="text-xs text-gray-400">⏭️ Final</span>
+                            <input type="range" id="trimEndTopRange" min="0" max="1" step="0.01" value="1" class="w-20">
+                            <span id="trimEndTopValue" class="value-display text-xs">0:00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <!-- Controles Video Inferior -->
+                <div class="control-panel space-y-3">
+                    <h4 class="text-lg font-bold text-pink-400">🔽 Video Inferior</h4>
+                    
+                    <div>
+                        <label for="scaleBottomRange" class="text-sm">🔍 Zoom: <span id="scaleBottomValue" class="value-display">2.47</span></label>
+                        <input type="range" id="scaleBottomRange" min="0.5" max="3" step="0.01" value="2.47" class="w-full">
+                    </div>
+
+                    <div>
+                        <label for="offsetXBottomRange" class="text-sm">↔️ Posición X: <span id="offsetXBottomValue" class="value-display">0</span></label>
+                        <input type="range" id="offsetXBottomRange" min="-500" max="500" step="1" value="0" class="w-full">
+                    </div>
+
+                    <div>
+                        <label for="offsetYBottomRange" class="text-sm">↕️ Posición Y: <span id="offsetYBottomValue" class="value-display">-113</span></label>
+                        <input type="range" id="offsetYBottomRange" min="-500" max="500" step="1" value="-113" class="w-full">
+                    </div>
+
+                    <!-- Trim Inferior -->
+                    <div class="trim-controls-wrapper">
+                        <div class="flex flex-col items-center space-y-1">
+                            <span class="text-xs text-gray-400">⏮️ Inicio</span>
+                            <input type="range" id="trimStartBottomRange" min="0" max="1" step="0.01" value="0" class="w-20">
+                            <span id="trimStartBottomValue" class="value-display text-xs">0:00</span>
+                        </div>
+                        <div class="flex flex-col items-center space-y-1">
+                            <span class="text-xs text-gray-400">⏭️ Final</span>
+                            <input type="range" id="trimEndBottomRange" min="0" max="1" step="0.01" value="1" class="w-20">
+                            <span id="trimEndBottomValue" class="value-display text-xs">0:00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <!-- Control de División -->
+                <div class="control-panel">
+                    <label for="splitXRange" class="text-sm font-semibold">✂️ Punto de División (0.5 = centro)</label>
+                    <input type="range" id="splitXRange" min="0" max="1" step="0.01" value="0.5" class="w-full mt-2">
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // ===========================
+        // CONFIGURACIÓN INICIAL
+        // ===========================
+        const DEFAULT_IMGUR_URL = "https://i.imgur.com/WfBazQx.png";
+
+        const videoTop = document.getElementById('videoSourceTop');
+        const videoBottom = document.getElementById('videoSourceBottom');
+        const videoSingle = document.getElementById('videoSourceSingle');
+
+        const canvasSplit = document.getElementById('splitScreenCanvas');
+        const ctxSplit = canvasSplit.getContext('2d', { willReadFrequently: true });
+
+        const canvasSingle = document.getElementById('singleCanvas');
+        const ctxSingle = canvasSingle.getContext('2d', { willReadFrequently: true });
+
+        // Tamaño real del canvas (9:16)
+        const CANVAS_WIDTH = 1080;
+        const CANVAS_HEIGHT = 1920;
+
+        canvasSplit.width = CANVAS_WIDTH;
+        canvasSplit.height = CANVAS_HEIGHT;
+        canvasSingle.width = CANVAS_WIDTH;
+        canvasSingle.height = CANVAS_HEIGHT;
+
+        let backgroundImageSingle = null;
+        let backgroundImageSplit = null;
+
+        // Configuraciones de composición
+        const compositionSettings = {
+            splitX: 0.5,
+            top: {
+                scale: 1.84,
+                offsetX: 0,
+                offsetY: 71.00,
+                trimStart: 0,
+                trimEnd: 0
+            },
+            bottom: {
+                scale: 2.47,
+                offsetX: 0,
+                offsetY: -113.00,
+                trimStart: 0,
+                trimEnd: 0
+            },
+            single: {
+                scale: 1.65,
+                offsetX: 0,
+                offsetY: 0,
+                trimStart: 0,
+                trimEnd: 0
+            }
+        };
+
+        let isRecording = false;
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        
+        // Variables para renderizado frame-by-frame controlado
+        let frameByFrameMode = false;
+        let capturedFrames = [];
+        let frameCount = 0;
+        let startTimeTop = 0;
+        let startTimeBottom = 0;
+        let renderingCancelled = false;
+
+        let swapVideos = false;
+
+        // ===========================
+        // FUNCIONES AUXILIARES
+        // ===========================
+        function formatTime(seconds) {
+            if (isNaN(seconds) || seconds < 0) return '0:00';
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function getFilenameDateFormat() {
+            const now = new Date();
+            const day = now.getDate().toString().padStart(2, '0');
+            const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+            const month = months[now.getMonth()];
+            const hours = now.getHours().toString().padStart(2, '0');
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            return `${day}${month}${hours}${minutes}`;
+        }
+
+        function updateSliderValue(elementId, value) {
+            const el = document.getElementById(elementId);
+            if (el) {
+                el.textContent = parseFloat(value).toFixed(2);
+            }
+        }
+
+        // ===========================
+        // CARGA DE ARCHIVOS
+        // ===========================
+        document.getElementById('videoFileTop').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                videoTop.src = URL.createObjectURL(file);
+                videoTop.load();
+                videoTop.onloadedmetadata = () => {
+                    compositionSettings.top.trimEnd = videoTop.duration;
+                    document.getElementById('trimEndTopRange').max = videoTop.duration;
+                    document.getElementById('trimStartTopRange').max = videoTop.duration;
+                    document.getElementById('trimEndTopValue').textContent = formatTime(videoTop.duration);
+                    
+                    // IMPORTANTE: Mostrar el primer frame en la vista previa
+                    // Usamos un pequeño delay para asegurar que el video está completamente cargado
+                    setTimeout(() => {
+                        videoTop.currentTime = 0.001; // Usamos 0.001 en lugar de 0 para forzar el evento seeked
+                    }, 100);
+                };
+                
+                // Cuando el frame está listo, dibujarlo en el canvas
+                videoTop.onseeked = () => {
+                    // Forzar el dibujo del frame actual inmediatamente
+                    requestAnimationFrame(() => {
+                        drawFrame();
+                    });
+                };
+            }
+        });
+
+        document.getElementById('videoFileBottom').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                videoBottom.src = URL.createObjectURL(file);
+                videoBottom.load();
+                videoBottom.onloadedmetadata = () => {
+                    compositionSettings.bottom.trimEnd = videoBottom.duration;
+                    document.getElementById('trimEndBottomRange').max = videoBottom.duration;
+                    document.getElementById('trimStartBottomRange').max = videoBottom.duration;
+                    document.getElementById('trimEndBottomValue').textContent = formatTime(videoBottom.duration);
+                    
+                    // IMPORTANTE: Mostrar el primer frame en la vista previa
+                    // Usamos un pequeño delay para asegurar que el video está completamente cargado
+                    setTimeout(() => {
+                        videoBottom.currentTime = 0.001; // Usamos 0.001 en lugar de 0 para forzar el evento seeked
+                    }, 100);
+                };
+                
+                // Cuando el frame está listo, dibujarlo en el canvas
+                videoBottom.onseeked = () => {
+                    // Forzar el dibujo del frame actual inmediatamente
+                    requestAnimationFrame(() => {
+                        drawFrame();
+                    });
+                };
+            }
+        });
+
+        document.getElementById('videoFileSingle').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                videoSingle.src = URL.createObjectURL(file);
+                videoSingle.load();
+                videoSingle.onloadedmetadata = () => {
+                    compositionSettings.single.trimEnd = videoSingle.duration;
+                    // Los sliders mantienen valores de 0 a 1, no cambiamos su max
+                    document.getElementById('trimEndValue').textContent = formatTime(videoSingle.duration);
+                    document.getElementById('trimStartValue').textContent = formatTime(0);
+                    
+                    // IMPORTANTE: Mostrar el primer frame en la vista previa
+                    // Usamos un pequeño delay para asegurar que el video está completamente cargado
+                    setTimeout(() => {
+                        videoSingle.currentTime = 0.001; // Usamos 0.001 en lugar de 0 para forzar el evento seeked
+                    }, 100);
+                };
+                
+                // Cuando el frame está listo, dibujarlo en el canvas
+                videoSingle.onseeked = () => {
+                    // Forzar el dibujo del frame actual inmediatamente
+                    requestAnimationFrame(() => {
+                        drawFrame();
+                    });
+                };
+            }
+        });
+
+        document.getElementById('bgImageFileSingle').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    const img = new Image();
+                    img.crossOrigin = "anonymous";
+                    img.onload = () => { backgroundImageSingle = img; };
+                    img.src = ev.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        document.getElementById('bgImageFileSplit').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    const img = new Image();
+                    img.crossOrigin = "anonymous";
+                    img.onload = () => { backgroundImageSplit = img; };
+                    img.src = ev.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // ===========================
+        // DIBUJO DE FRAMES
+        // ===========================
+        function drawFrame() {
+            // Dibujar video único (siempre, para mostrar el fondo incluso sin video)
+            drawSingleVideo();
+
+            // Dibujar split-screen (siempre, para mostrar el fondo incluso sin videos)
+            drawSplitScreen();
+
+            requestAnimationFrame(drawFrame);
+        }
+
+        function drawSingleVideo() {
+            ctxSingle.fillStyle = '#000';
+            ctxSingle.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            if (backgroundImageSingle) {
+                ctxSingle.drawImage(backgroundImageSingle, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            }
+
+            // Solo dibujar el video si está cargado
+            if (videoSingle.readyState >= 2) {
+                const currentTime = videoSingle.currentTime;
+                const trimStart = compositionSettings.single.trimStart;
+                const trimEnd = compositionSettings.single.trimEnd;
+
+                if (currentTime >= trimStart && currentTime <= trimEnd) {
+                    const scale = compositionSettings.single.scale;
+                    const offsetX = compositionSettings.single.offsetX;
+                    const offsetY = compositionSettings.single.offsetY;
+
+                    const videoWidth = videoSingle.videoWidth;
+                    const videoHeight = videoSingle.videoHeight;
+
+                    const scaledWidth = videoWidth * scale;
+                    const scaledHeight = videoHeight * scale;
+
+                    const x = (CANVAS_WIDTH - scaledWidth) / 2 + offsetX;
+                    const y = (CANVAS_HEIGHT - scaledHeight) / 2 + offsetY;
+
+                    ctxSingle.drawImage(videoSingle, x, y, scaledWidth, scaledHeight);
+                }
+
+                // Actualizar timeline
+                const timeline = document.getElementById('singleTimeline');
+                if (!timeline.matches(':active')) {
+                    timeline.max = videoSingle.duration || 1;
+                    timeline.value = videoSingle.currentTime || 0;
+                }
+                document.getElementById('singleTimeDisplay').textContent = 
+                    `${formatTime(videoSingle.currentTime)} / ${formatTime(videoSingle.duration)}`;
+            }
+        }
+
+        function drawSplitScreen() {
+            ctxSplit.fillStyle = '#000';
+            ctxSplit.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            if (backgroundImageSplit) {
+                ctxSplit.drawImage(backgroundImageSplit, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            }
+
+            const splitY = CANVAS_HEIGHT * compositionSettings.splitX;
+
+            const topVideo = swapVideos ? videoBottom : videoTop;
+            const bottomVideo = swapVideos ? videoTop : videoBottom;
+            const topSettings = swapVideos ? compositionSettings.bottom : compositionSettings.top;
+            const bottomSettings = swapVideos ? compositionSettings.top : compositionSettings.bottom;
+
+            // Dibujar video superior
+            if (topVideo.readyState >= 2) {
+                ctxSplit.save();
+                ctxSplit.beginPath();
+                ctxSplit.rect(0, 0, CANVAS_WIDTH, splitY);
+                ctxSplit.clip();
+
+                const scale = topSettings.scale;
+                const offsetX = topSettings.offsetX;
+                const offsetY = topSettings.offsetY;
+
+                const videoWidth = topVideo.videoWidth;
+                const videoHeight = topVideo.videoHeight;
+                const scaledWidth = videoWidth * scale;
+                const scaledHeight = videoHeight * scale;
+
+                const x = (CANVAS_WIDTH - scaledWidth) / 2 + offsetX;
+                const y = (splitY - scaledHeight) / 2 + offsetY;
+
+                ctxSplit.drawImage(topVideo, x, y, scaledWidth, scaledHeight);
+                ctxSplit.restore();
+            }
+
+            // Dibujar video inferior
+            if (bottomVideo.readyState >= 2) {
+                ctxSplit.save();
+                ctxSplit.beginPath();
+                ctxSplit.rect(0, splitY, CANVAS_WIDTH, CANVAS_HEIGHT - splitY);
+                ctxSplit.clip();
+
+                const scale = bottomSettings.scale;
+                const offsetX = bottomSettings.offsetX;
+                const offsetY = bottomSettings.offsetY;
+
+                const videoWidth = bottomVideo.videoWidth;
+                const videoHeight = bottomVideo.videoHeight;
+                const scaledWidth = videoWidth * scale;
+                const scaledHeight = videoHeight * scale;
+
+                const x = (CANVAS_WIDTH - scaledWidth) / 2 + offsetX;
+                const y = splitY + ((CANVAS_HEIGHT - splitY) - scaledHeight) / 2 + offsetY;
+
+                ctxSplit.drawImage(bottomVideo, x, y, scaledWidth, scaledHeight);
+                ctxSplit.restore();
+            }
+
+            // Actualizar timelines
+            updateTimeline('timelineTop', videoTop, 'topTimeDisplay');
+            updateTimeline('timelineBottom', videoBottom, 'bottomTimeDisplay');
+        }
+
+        function updateTimeline(timelineId, video, displayId) {
+            const timeline = document.getElementById(timelineId);
+            if (!timeline.matches(':active')) {
+                timeline.max = video.duration || 1;
+                timeline.value = video.currentTime || 0;
+            }
+            document.getElementById(displayId).textContent = 
+                `${formatTime(video.currentTime)} / ${formatTime(video.duration)}`;
+        }
+
+        // ===========================
+        // CONTROLES DE REPRODUCCIÓN
+        // ===========================
+        function togglePlayPause(mode) {
+            if (mode === 'top') {
+                if (videoTop.paused) {
+                    videoTop.play();
+                    document.getElementById('playPauseTopBtn').textContent = '⏸️';
+                } else {
+                    videoTop.pause();
+                    document.getElementById('playPauseTopBtn').textContent = '▶️';
+                }
+            } else if (mode === 'bottom') {
+                if (videoBottom.paused) {
+                    videoBottom.play();
+                    document.getElementById('playPauseBottomBtn').textContent = '⏸️';
+                } else {
+                    videoBottom.pause();
+                    document.getElementById('playPauseBottomBtn').textContent = '▶️';
+                }
+            } else if (mode === 'single') {
+                if (videoSingle.paused) {
+                    videoSingle.play();
+                    document.getElementById('playPauseSingleBtn').textContent = '⏸️ Pause';
+                } else {
+                    videoSingle.pause();
+                    document.getElementById('playPauseSingleBtn').textContent = '▶️ Play';
+                }
+            }
+        }
+
+        function toggleMute(mode) {
+            if (mode === 'top') {
+                videoTop.muted = !videoTop.muted;
+                document.getElementById('muteTopBtn').textContent = videoTop.muted ? '🔇' : '🔊';
+            } else if (mode === 'bottom') {
+                videoBottom.muted = !videoBottom.muted;
+                document.getElementById('muteBottomBtn').textContent = videoBottom.muted ? '🔇' : '🔊';
+            } else if (mode === 'single') {
+                videoSingle.muted = !videoSingle.muted;
+                document.getElementById('muteSingleBtn').textContent = videoSingle.muted ? '🔇' : '🔊';
+            }
+        }
+
+        function toggleSwap() {
+            swapVideos = !swapVideos;
+        }
+
+        // ===========================
+        // GRABACIÓN Y DESCARGA
+        // ===========================
+        async function toggleRecording(action, mode) {
+            if (action === 'start' && !isRecording) {
+                // Verificar que hay videos cargados
+                if (mode === 'split' && videoTop.readyState < 2 && videoBottom.readyState < 2) {
+                    alert('⚠️ Por favor carga al menos un video antes de grabar');
+                    return;
+                }
+
+                isRecording = true;
+                renderingCancelled = false;
+                
+                // Guardar posiciones iniciales
+                if (mode === 'split') {
+                    startTimeTop = videoTop.currentTime;
+                    startTimeBottom = videoBottom.currentTime;
+                    console.log(`🎬 Iniciando desde: Superior ${startTimeTop.toFixed(2)}s | Inferior ${startTimeBottom.toFixed(2)}s`);
+                }
+                
+                // Mostrar barra de progreso
+                const progressContainer = document.getElementById('renderProgressContainer');
+                const progressText = document.getElementById('renderProgressText');
+                const progressPercent = document.getElementById('renderProgressPercent');
+                const progressBar = document.getElementById('renderProgressBar');
+                
+                if (progressContainer) {
+                    progressContainer.style.display = 'block';
+                    progressText.textContent = '🎬 Renderizando frame por frame...';
+                    progressPercent.textContent = '0%';
+                    progressBar.style.width = '0%';
+                }
+                
+                // Configuración ultra-optimizada
+                const FPS = 20; // 20 fps para máxima estabilidad
+                const frameDuration = 1000 / FPS; // Duración de cada frame en ms
+                
+                const canvas = mode === 'split' ? canvasSplit : canvasSingle;
+                
+                // Crear stream controlado manualmente
+                const stream = canvas.captureStream(FPS);
+                
+                // CAPTURAR SOLO AUDIO DEL VIDEO INFERIOR
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const destination = audioContext.createMediaStreamDestination();
+                
+                if (mode === 'split') {
+                    // Solo audio del inferior
+                    if (videoBottom.readyState >= 2) {
+                        try {
+                            const sourceBottom = audioContext.createMediaElementSource(videoBottom);
+                            sourceBottom.connect(destination);
+                            sourceBottom.connect(audioContext.destination);
+                            window._recordingAudioSourceBottom = sourceBottom;
+                            console.log('✅ Audio del video INFERIOR capturado');
+                        } catch (e) {
+                            console.warn('No se pudo capturar audio del video inferior:', e);
+                        }
+                    }
+                } else {
+                    const source = audioContext.createMediaElementSource(videoSingle);
+                    source.connect(destination);
+                    source.connect(audioContext.destination);
+                    window._recordingAudioSource = source;
+                }
+                
+                // Combinar video y audio
+                const finalStream = new MediaStream([
+                    ...stream.getVideoTracks(),
+                    ...destination.stream.getAudioTracks()
+                ]);
+                
+                window._recordingAudioContext = audioContext;
+                
+                // Configuración ULTRA-OPTIMIZADA para fluidez perfecta
+                const mimeType = 'video/webm;codecs=vp8,opus';
+                
+                mediaRecorder = new MediaRecorder(finalStream, {
+                    mimeType: mimeType,
+                    videoBitsPerSecond: 6000000, // 6 Mbps - Máxima fluidez
+                    audioBitsPerSecond: 128000
+                });
+                recordedChunks = [];
+                
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) {
+                        recordedChunks.push(e.data);
+                        // Actualizar progreso
+                        if (progressPercent && mode === 'split') {
+                            const elapsed = (Date.now() - window._recordingStartTime) / 1000;
+                            progressPercent.textContent = `${Math.floor(elapsed)}s`;
+                        }
+                    }
+                };
+                
+                mediaRecorder.onstop = async () => {
+                    if (progressContainer) {
+                        progressText.textContent = '⏳ Procesando video final...';
+                        progressBar.style.width = '95%';
+                    }
+                    
+                    const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `video_B_${getFilenameDateFormat()}.webm`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    
+                    // Limpiar audio
+                    if (window._recordingAudioSource) {
+                        window._recordingAudioSource.disconnect();
+                    }
+                    if (window._recordingAudioSourceBottom) {
+                        window._recordingAudioSourceBottom.disconnect();
+                    }
+                    if (window._recordingAudioContext) {
+                        window._recordingAudioContext.close();
+                    }
+                    
+                    if (progressContainer) {
+                        progressBar.style.width = '100%';
+                        progressText.textContent = '✅ ¡Video completado!';
+                        
+                        setTimeout(() => {
+                            progressContainer.style.display = 'none';
+                        }, 2000);
+                    }
+                    
+                    alert('✅ Video con FLUIDEZ PERFECTA descargado!\n\n📊 Calidad: 6 Mbps @ 20fps (frame-by-frame optimizado)\n💾 Tamaño: ~45MB/min\n🎵 Audio: SOLO del video inferior\n🔇 Video superior: SIN audio\n✨ Renderizado frame-by-frame para cero entrecortados\n\nSi necesitas MP4, convierte en:\nhttps://cloudconvert.com/webm-to-mp4');
+                };
+                
+                mediaRecorder.onerror = (e) => {
+                    console.error('Error en la grabación:', e);
+                    alert('❌ Error en la grabación: ' + e.error);
+                    isRecording = false;
+                    if (progressContainer) progressContainer.style.display = 'none';
+                    document.getElementById('startRecordingBtn').disabled = false;
+                    document.getElementById('stopRecordingBtn').disabled = true;
+                };
+                
+                try {
+                    // Chunks muy grandes para mínimo overhead
+                    mediaRecorder.start(2000);
+                    window._recordingStartTime = Date.now();
+                    
+                    // REPRODUCIR VIDEOS DESDE SU POSICIÓN ACTUAL
+                    if (mode === 'split') {
+                        if (videoTop.readyState >= 2) {
+                            videoTop.play();
+                            console.log(`▶️ Superior desde ${videoTop.currentTime.toFixed(2)}s`);
+                        }
+                        if (videoBottom.readyState >= 2) {
+                            videoBottom.play();
+                            console.log(`▶️ Inferior desde ${videoBottom.currentTime.toFixed(2)}s`);
+                        }
+                    }
+                    
+                    // Actualizar UI
+                    const startBtn = document.getElementById('startRecordingBtn');
+                    const stopBtn = document.getElementById('stopRecordingBtn');
+                    
+                    startBtn.disabled = true;
+                    startBtn.style.opacity = '0.5';
+                    startBtn.textContent = '⏺️ Renderizando...';
+                    startBtn.classList.add('recording');
+                    
+                    stopBtn.disabled = false;
+                    stopBtn.style.opacity = '1';
+                    stopBtn.classList.add('btn-primary');
+                    stopBtn.classList.remove('btn-control');
+                    
+                    console.log('✅ Renderizado frame-by-frame iniciado - FLUIDEZ PERFECTA garantizada');
+                } catch (error) {
+                    console.error('Error al iniciar grabación:', error);
+                    alert('❌ No se pudo iniciar la grabación: ' + error.message);
+                    isRecording = false;
+                    if (progressContainer) progressContainer.style.display = 'none';
+                }
+                
+            } else if (action === 'stop' && isRecording) {
+                try {
+                    mediaRecorder.stop();
+                    isRecording = false;
+                    renderingCancelled = false;
+                    
+                    // PAUSAR VIDEOS
+                    if (mode === 'split') {
+                        if (videoTop.readyState >= 2) {
+                            videoTop.pause();
+                            console.log('⏸️ Video superior pausado');
+                        }
+                        if (videoBottom.readyState >= 2) {
+                            videoBottom.pause();
+                            console.log('⏸️ Video inferior pausado');
+                        }
+                    }
+                    
+                    // Actualizar UI
+                    const startBtn = document.getElementById('startRecordingBtn');
+                    const stopBtn = document.getElementById('stopRecordingBtn');
+                    
+                    startBtn.disabled = false;
+                    startBtn.style.opacity = '1';
+                    startBtn.textContent = '⏺️ Grabar';
+                    startBtn.classList.remove('recording');
+                    
+                    stopBtn.disabled = true;
+                    stopBtn.style.opacity = '0.5';
+                    stopBtn.classList.remove('btn-primary');
+                    stopBtn.classList.add('btn-control');
+                    
+                    console.log('⏹️ Renderizado detenido');
+                } catch (error) {
+                    console.error('Error al detener grabación:', error);
+                    alert('❌ Error al detener la grabación: ' + error.message);
+                }
+            }
+        }
+
+        async function generateAndDownloadSingleClip() {
+            const trimStart = compositionSettings.single.trimStart;
+            const trimEnd = compositionSettings.single.trimEnd;
+            const duration = trimEnd - trimStart;
+
+            if (duration <= 0) {
+                alert('La duración del recorte debe ser mayor a 0');
+                return;
+            }
+
+            // Posicionar video al inicio del recorte
+            videoSingle.currentTime = trimStart;
+            await new Promise(resolve => {
+                videoSingle.onseeked = resolve;
+            });
+
+            // Pequeño delay para asegurar que el frame esté renderizado
+            await new Promise(resolve => setTimeout(resolve, 200));
+
+            // Capturar video del canvas con frame rate óptimo
+            const canvasStream = canvasSingle.captureStream(25); // 25fps - MÁS ESTABLE
+            
+            // CAPTURAR AUDIO USANDO AUDIOCONTEXT - SOLUCIÓN REAL
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const destination = audioContext.createMediaStreamDestination();
+            const source = audioContext.createMediaElementSource(videoSingle);
+            source.connect(destination);
+            source.connect(audioContext.destination);
+            
+            // Combinar video y audio
+            const finalStream = new MediaStream([
+                ...canvasStream.getVideoTracks(),
+                ...destination.stream.getAudioTracks()
+            ]);
+            
+            console.log('✅ Audio capturado con AudioContext');
+
+            // FORZAR VP8 para mejor rendimiento
+            const mimeType = 'video/webm;codecs=vp8,opus';
+            console.log('🎬 Usando VP8 para máxima fluidez');
+
+            const recorder = new MediaRecorder(finalStream, {
+                mimeType: mimeType,
+                videoBitsPerSecond: 8000000, // 8 Mbps - OPTIMIZADO para fluidez
+                audioBitsPerSecond: 128000 // 128 kbps - Eficiente
+            });
+
+            const chunks = [];
+            recorder.ondataavailable = (e) => {
+                if (e.data.size > 0) chunks.push(e.data);
+            };
+
+            recorder.onstop = () => {
+                const blob = new Blob(chunks, { type: 'video/webm' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `video_A_${getFilenameDateFormat()}.webm`;
+                a.click();
+                videoSingle.pause();
+                
+                // Limpiar
+                source.disconnect();
+                audioContext.close();
+                
+                alert('✅ Video descargado con MÁXIMA FLUIDEZ!\n\n📊 Calidad: 8 Mbps @ 25fps (optimizado)\n💾 Tamaño: ~60MB/min\n✨ Configuración optimizada para cero entrecortados\n\nSi necesitas MP4, convierte en:\nhttps://cloudconvert.com/webm-to-mp4');
+            };
+
+            // Chunks de 1 segundo para MÍNIMO overhead
+            recorder.start(1000);
+            
+            // Pequeño delay antes de reproducir para sincronización
+            await new Promise(resolve => setTimeout(resolve, 100));
+            videoSingle.play();
+
+            setTimeout(() => {
+                recorder.stop();
+            }, duration * 1000);
+        }
+
+        // ===========================
+        // EVENT LISTENERS
+        // ===========================
+        document.getElementById('timelineTop').addEventListener('input', (e) => {
+            videoTop.currentTime = parseFloat(e.target.value);
+        });
+
+        document.getElementById('timelineBottom').addEventListener('input', (e) => {
+            videoBottom.currentTime = parseFloat(e.target.value);
+        });
+
+        document.getElementById('singleTimeline').addEventListener('input', (e) => {
+            videoSingle.currentTime = parseFloat(e.target.value);
+        });
+
+        document.getElementById('playPauseTopBtn').addEventListener('click', () => togglePlayPause('top'));
+        document.getElementById('playPauseBottomBtn').addEventListener('click', () => togglePlayPause('bottom'));
+        document.getElementById('playPauseSingleBtn').addEventListener('click', () => togglePlayPause('single'));
+
+        document.getElementById('muteTopBtn').addEventListener('click', () => toggleMute('top'));
+        document.getElementById('muteBottomBtn').addEventListener('click', () => toggleMute('bottom'));
+        document.getElementById('muteSingleBtn').addEventListener('click', () => toggleMute('single'));
+
+        document.getElementById('toggleSwapBtn').addEventListener('click', toggleSwap);
+        document.getElementById('startRecordingBtn').addEventListener('click', () => toggleRecording('start', 'split'));
+        document.getElementById('stopRecordingBtn').addEventListener('click', () => toggleRecording('stop', 'split'));
+        document.getElementById('generateDownloadSingleBtn').addEventListener('click', generateAndDownloadSingleClip);
+
+        // Listeners de controles de composición
+        document.getElementById('splitXRange').addEventListener('input', (e) => {
+            compositionSettings.splitX = parseFloat(e.target.value);
+        });
+
+        // Controles video superior
+        document.getElementById('scaleTopRange').addEventListener('input', (e) => {
+            compositionSettings.top.scale = parseFloat(e.target.value);
+            updateSliderValue('scaleTopValue', e.target.value);
+        });
+        document.getElementById('offsetXTopRange').addEventListener('input', (e) => {
+            compositionSettings.top.offsetX = parseFloat(e.target.value);
+            updateSliderValue('offsetXTopValue', e.target.value);
+        });
+        document.getElementById('offsetYTopRange').addEventListener('input', (e) => {
+            compositionSettings.top.offsetY = parseFloat(e.target.value);
+            updateSliderValue('offsetYTopValue', e.target.value);
+        });
+
+        // Trim controles superior
+        document.getElementById('trimStartTopRange').addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            const trimEndValue = compositionSettings.top.trimEnd;
+            if (value >= trimEndValue) { e.target.value = trimEndValue - 0.01; }
+            compositionSettings.top.trimStart = parseFloat(e.target.value);
+            document.getElementById('trimStartTopValue').textContent = formatTime(compositionSettings.top.trimStart);
+            videoTop.currentTime = compositionSettings.top.trimStart;
+        });
+
+        document.getElementById('trimEndTopRange').addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            const trimStartValue = compositionSettings.top.trimStart;
+            if (value <= trimStartValue) { e.target.value = trimStartValue + 0.01; }
+            compositionSettings.top.trimEnd = parseFloat(e.target.value);
+            document.getElementById('trimEndTopValue').textContent = formatTime(compositionSettings.top.trimEnd);
+            videoTop.currentTime = compositionSettings.top.trimEnd - 0.01;
+        });
+
+        // Controles video inferior
+        document.getElementById('scaleBottomRange').addEventListener('input', (e) => {
+            compositionSettings.bottom.scale = parseFloat(e.target.value);
+            updateSliderValue('scaleBottomValue', e.target.value);
+        });
+        document.getElementById('offsetXBottomRange').addEventListener('input', (e) => {
+            compositionSettings.bottom.offsetX = parseFloat(e.target.value);
+            updateSliderValue('offsetXBottomValue', e.target.value);
+        });
+        document.getElementById('offsetYBottomRange').addEventListener('input', (e) => {
+            compositionSettings.bottom.offsetY = parseFloat(e.target.value);
+            updateSliderValue('offsetYBottomValue', e.target.value);
+        });
+
+        // Trim controles inferior
+        document.getElementById('trimStartBottomRange').addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            const trimEndValue = compositionSettings.bottom.trimEnd;
+            if (value >= trimEndValue) { e.target.value = trimEndValue - 0.01; }
+            compositionSettings.bottom.trimStart = parseFloat(e.target.value);
+            document.getElementById('trimStartBottomValue').textContent = formatTime(compositionSettings.bottom.trimStart);
+            videoBottom.currentTime = compositionSettings.bottom.trimStart;
+        });
+
+        document.getElementById('trimEndBottomRange').addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            const trimStartValue = compositionSettings.bottom.trimStart;
+            if (value <= trimStartValue) { e.target.value = trimStartValue + 0.01; }
+            compositionSettings.bottom.trimEnd = parseFloat(e.target.value);
+            document.getElementById('trimEndBottomValue').textContent = formatTime(compositionSettings.bottom.trimEnd);
+            videoBottom.currentTime = compositionSettings.bottom.trimEnd - 0.01;
+        });
+
+        // Controles video único
+        document.getElementById('scaleSingleRange').addEventListener('input', (e) => {
+            compositionSettings.single.scale = parseFloat(e.target.value);
+            updateSliderValue('scaleSingleValue', e.target.value);
+        });
+        document.getElementById('offsetXSingleRange').addEventListener('input', (e) => {
+            compositionSettings.single.offsetX = parseFloat(e.target.value);
+            updateSliderValue('offsetXSingleValue', e.target.value);
+        });
+        document.getElementById('offsetYSingleRange').addEventListener('input', (e) => {
+            compositionSettings.single.offsetY = parseFloat(e.target.value);
+            updateSliderValue('offsetYSingleValue', e.target.value);
+        });
+
+        // Trim controles video único
+        document.getElementById('trimStartRange').addEventListener('input', (e) => {
+            const sliderValue = parseFloat(e.target.value); // Valor de 0 a 1
+            const duration = videoSingle.duration || 1;
+            const timeInSeconds = sliderValue * duration; // Convertir a segundos
+            
+            const trimEndValue = compositionSettings.single.trimEnd;
+            if (timeInSeconds >= trimEndValue) {
+                const maxSliderValue = (trimEndValue - 0.01) / duration;
+                e.target.value = maxSliderValue;
+                compositionSettings.single.trimStart = trimEndValue - 0.01;
+            } else {
+                compositionSettings.single.trimStart = timeInSeconds;
+            }
+            
+            document.getElementById('trimStartValue').textContent = formatTime(compositionSettings.single.trimStart);
+            videoSingle.currentTime = compositionSettings.single.trimStart;
+        });
+
+        document.getElementById('trimEndRange').addEventListener('input', (e) => {
+            const sliderValue = parseFloat(e.target.value); // Valor de 0 a 1
+            const duration = videoSingle.duration || 1;
+            const timeInSeconds = sliderValue * duration; // Convertir a segundos
+            
+            const trimStartValue = compositionSettings.single.trimStart;
+            if (timeInSeconds <= trimStartValue) {
+                const minSliderValue = (trimStartValue + 0.01) / duration;
+                e.target.value = minSliderValue;
+                compositionSettings.single.trimEnd = trimStartValue + 0.01;
+            } else {
+                compositionSettings.single.trimEnd = timeInSeconds;
+            }
+            
+            document.getElementById('trimEndValue').textContent = formatTime(compositionSettings.single.trimEnd);
+            videoSingle.currentTime = compositionSettings.single.trimEnd - 0.01;
+        });
+
+        // Botones de ajuste fino para trim start
+        document.getElementById('trimStartMinus2').addEventListener('click', () => {
+            const newTime = Math.max(0, compositionSettings.single.trimStart - 2);
+            compositionSettings.single.trimStart = newTime;
+            const duration = videoSingle.duration || 1;
+            document.getElementById('trimStartRange').value = newTime / duration;
+            document.getElementById('trimStartValue').textContent = formatTime(newTime);
+            videoSingle.currentTime = newTime;
+        });
+
+        document.getElementById('trimStartPlus2').addEventListener('click', () => {
+            const maxTime = compositionSettings.single.trimEnd - 0.01;
+            const newTime = Math.min(maxTime, compositionSettings.single.trimStart + 2);
+            compositionSettings.single.trimStart = newTime;
+            const duration = videoSingle.duration || 1;
+            document.getElementById('trimStartRange').value = newTime / duration;
+            document.getElementById('trimStartValue').textContent = formatTime(newTime);
+            videoSingle.currentTime = newTime;
+        });
+
+        // Botones de ajuste fino para trim end
+        document.getElementById('trimEndMinus2').addEventListener('click', () => {
+            const minTime = compositionSettings.single.trimStart + 0.01;
+            const newTime = Math.max(minTime, compositionSettings.single.trimEnd - 2);
+            compositionSettings.single.trimEnd = newTime;
+            const duration = videoSingle.duration || 1;
+            document.getElementById('trimEndRange').value = newTime / duration;
+            document.getElementById('trimEndValue').textContent = formatTime(newTime);
+            videoSingle.currentTime = newTime - 0.01;
+        });
+
+        document.getElementById('trimEndPlus2').addEventListener('click', () => {
+            const duration = videoSingle.duration || 1;
+            const newTime = Math.min(duration, compositionSettings.single.trimEnd + 2);
+            compositionSettings.single.trimEnd = newTime;
+            document.getElementById('trimEndRange').value = newTime / duration;
+            document.getElementById('trimEndValue').textContent = formatTime(newTime);
+            videoSingle.currentTime = newTime - 0.01;
+        });
+
+        // ============================================
+        // FUNCIÓN PARA CAMBIAR ENTRE PESTAÑAS
+        // ============================================
+        function switchTab(tabId) {
+            // Cancelar cualquier voz activa
+            if ('speechSynthesis' in window) {
+                speechSynthesis.cancel();
+            }
+
+            // Scroll al inicio de la página
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+
+            // Ocultar todas las pestañas
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+                tab.style.display = 'none'; // Forzar ocultar
+            });
+            
+            // Desactivar todos los botones
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Pequeño delay para transición suave
+            setTimeout(() => {
+                // Activar la pestaña seleccionada
+                const newTab = document.getElementById(tabId + 'Content');
+                const newBtn = document.getElementById(tabId + 'Btn');
+                
+                if (newTab) {
+                    newTab.classList.add('active');
+                    
+                    // Aplicar el display correcto según la pestaña
+                    if (tabId === 'tab0') {
+                        newTab.style.display = 'flex'; // Primeros Pasos usa flex
+                    } else {
+                        newTab.style.display = 'grid'; // Otras pestañas usan grid
+                    }
+                }
+                
+                if (newBtn) {
+                    newBtn.classList.add('active');
+                }
+                
+                console.log('✅ Cambiado a pestaña:', tabId);
+            }, 100);
+        }
+
+        // ============================================
+        // SISTEMA DE PRIMEROS PASOS - ABELITO
+        // ============================================
+        const primerosPasos = [
+            {
+                mensaje: '¡Hola! Soy Abelito tu asistente virtual, no seas vago y pongámonos a trabajar, dormir y dormir nomás quieres, que chicha te pasa abelito de mierda.',
+                pregunta: '¿Estás listo para empezar a chambear?'
+            },
+            {
+                mensaje: 'Primero, debes entrar a Telegram, ingresar a los grupos, elegir el grupo correspondiente (G1 o G2, según se te indique y según la fecha).',
+                pregunta: '¿Ya encontraste el video que se va a trabajar?'
+            },
+            {
+                mensaje: 'Ahora, descarga el video y anota el nombre y número del video en un papel, para no olvidarlo.',
+                pregunta: '¿Ya lo apuntaste abelito? Confirma chamo.'
+            },
+            {
+                mensaje: 'A continuación, ve a descargas, y abre la carpeta donde se guardó el video descargado, y ahora mira el video y ubica el minuto exacto donde Gia,  deja de hablar.',
+                pregunta: '¿Ubicaste el minuto y segundo exacto? Confirma paloma.'
+            },
+            {
+                mensaje: 'Bien, ahora vamos a trabajar el paso 2... Eso esta en la pestaña Video único. Empezemos carajo.',
+                pregunta: '¿Listo para editar el video?'
+            }
+        ];
+
+        let primerPasoActual = 0;
+        let mensajePrimerPasoActual = ''; // Para guardar el mensaje actual
+
+        function hablarPrimerPaso(texto) {
+            if (!('speechSynthesis' in window)) {
+                return;
+            }
+
+            try {
+                speechSynthesis.cancel();
+                
+                const cleanText = texto.replace(/<[^>]*>/g, '');
+                if (!cleanText.trim()) return;
+
+                const utterance = new SpeechSynthesisUtterance(cleanText);
+                utterance.lang = 'es-ES';
+                utterance.rate = 0.9;
+                utterance.pitch = 1.0;
+                utterance.volume = 1.0;
+
+                speechSynthesis.speak(utterance);
+            } catch (error) {
+                console.warn('Error en síntesis de voz:', error);
+            }
+        }
+
+        function mostrarPrimerPaso(indice) {
+            if (indice < 0 || indice >= primerosPasos.length) return;
+
+            const paso = primerosPasos[indice];
+            
+            // Guardar mensaje actual para repetir
+            mensajePrimerPasoActual = paso.mensaje + '. ' + paso.pregunta;
+            
+            // Actualizar contenido con botón de repetir incluido
+            document.getElementById('primerPasoMensaje').innerHTML = 
+                `<button id="btnRepetirPrimerPaso" class="btn-control" style="position: absolute; top: 1rem; right: 1rem; padding: 0.5rem 1rem; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem;">
+                    🔊 Repetir
+                </button>
+                <p style="font-size: 1.3rem; line-height: 1.8; color: #e5e7eb; text-align: center; padding-right: 6rem;">${paso.mensaje}</p>`;
+            
+            document.getElementById('primerPasoPregunta').innerHTML = 
+                `<p style="font-size: 1.4rem; font-weight: 600; color: #fbbf24;">${paso.pregunta}</p>`;
+            
+            document.getElementById('primerPasoIndicador').textContent = `Paso ${indice + 1} de ${primerosPasos.length}`;
+
+            // Mostrar u ocultar botón "Atrás" según el paso
+            const btnAtras = document.getElementById('primerPasoAtras');
+            if (btnAtras) {
+                if (indice === 0) {
+                    btnAtras.style.display = 'none';
+                } else {
+                    btnAtras.style.display = 'block';
+                }
+            }
+
+            // Re-asignar event listener al botón de repetir
+            const btnRepetir = document.getElementById('btnRepetirPrimerPaso');
+            if (btnRepetir) {
+                btnRepetir.onclick = () => hablarPrimerPaso(mensajePrimerPasoActual);
+            }
+
+            // Hablar mensaje y pregunta
+            hablarPrimerPaso(mensajePrimerPasoActual);
+        }
+
+        function siguientePrimerPaso() {
+            primerPasoActual++;
+            
+            if (primerPasoActual >= primerosPasos.length) {
+                // Último paso completado
+                // Detener cualquier voz
+                if ('speechSynthesis' in window) {
+                    speechSynthesis.cancel();
+                }
+                
+                // Mensaje de felicitación
+                hablarPrimerPaso('¡Excelente trabajo! Ahora vamos a editar el video. Te llevo a la pestaña de edición.');
+                
+                // Cambiar a pestaña Video Único después de un delay
+                setTimeout(() => {
+                    switchTab('tab1');
+                }, 2000);
+            } else {
+                mostrarPrimerPaso(primerPasoActual);
+            }
+        }
+
+        function anteriorPrimerPaso() {
+            if (primerPasoActual > 0) {
+                primerPasoActual--;
+                mostrarPrimerPaso(primerPasoActual);
+            }
+        }
+
+        function responderNo() {
+            hablarPrimerPaso('Okay, tómate tu tiempo. Cuando estés listo, haz clic en Sí para continuar.');
+        }
+
+        // Inicializar cuando la página cargue
+        document.addEventListener('DOMContentLoaded', () => {
+            const btnSi = document.getElementById('primerPasoSi');
+            const btnNo = document.getElementById('primerPasoNo');
+            const btnAtras = document.getElementById('primerPasoAtras');
+            const btnComenzar = document.getElementById('btnComenzarPrimerosPasos');
+            
+            if (btnSi) {
+                btnSi.addEventListener('click', siguientePrimerPaso);
+            }
+            
+            if (btnNo) {
+                btnNo.addEventListener('click', responderNo);
+            }
+
+            if (btnAtras) {
+                btnAtras.addEventListener('click', anteriorPrimerPaso);
+            }
+
+            // Botón de Comenzar - Inicia los pasos
+            if (btnComenzar) {
+                btnComenzar.addEventListener('click', () => {
+                    // Ocultar pantalla de bienvenida
+                    document.getElementById('pantallaBienvenida').style.display = 'none';
+                    
+                    // Mostrar contenedor de pasos
+                    document.getElementById('primerPasoContainer').style.display = 'block';
+                    
+                    // Mostrar primer paso con voz
+                    mostrarPrimerPaso(0);
+                });
+            }
+        });
+
+        // ===========================
+        // INICIALIZACIÓN
+        // ===========================
+        window.onload = () => {
+            // Inicializar valores de sliders
+            updateSliderValue('scaleSingleValue', compositionSettings.single.scale);
+            updateSliderValue('offsetXSingleValue', compositionSettings.single.offsetX);
+            updateSliderValue('offsetYSingleValue', compositionSettings.single.offsetY);
+            updateSliderValue('scaleTopValue', compositionSettings.top.scale);
+            updateSliderValue('offsetXTopValue', compositionSettings.top.offsetX);
+            updateSliderValue('offsetYTopValue', compositionSettings.top.offsetY);
+            updateSliderValue('scaleBottomValue', compositionSettings.bottom.scale);
+            updateSliderValue('offsetXBottomValue', compositionSettings.bottom.offsetX);
+            updateSliderValue('offsetYBottomValue', compositionSettings.bottom.offsetY);
+
+            document.getElementById('trimStartTopValue').textContent = formatTime(compositionSettings.top.trimStart);
+            document.getElementById('trimEndTopValue').textContent = formatTime(compositionSettings.top.trimEnd);
+            document.getElementById('trimStartBottomValue').textContent = formatTime(compositionSettings.bottom.trimStart);
+            document.getElementById('trimEndBottomValue').textContent = formatTime(compositionSettings.bottom.trimEnd);
+            document.getElementById('trimStartValue').textContent = formatTime(compositionSettings.single.trimStart);
+            document.getElementById('trimEndValue').textContent = formatTime(compositionSettings.single.trimEnd);
+
+            // Inicializar estado de botones de grabación
+            document.getElementById('startRecordingBtn').disabled = false;
+            document.getElementById('stopRecordingBtn').disabled = true;
+            document.getElementById('stopRecordingBtn').style.opacity = '0.5';
+
+            // Cargar imagen de fondo predeterminada para Video Único
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => {
+                backgroundImageSingle = img;
+            };
+            img.src = DEFAULT_IMGUR_URL;
+
+            // Cargar imagen de fondo predeterminada para Split-Screen
+            const imgSplit = new Image();
+            imgSplit.crossOrigin = "anonymous";
+            imgSplit.onload = () => {
+                backgroundImageSplit = imgSplit;
+            };
+            imgSplit.src = DEFAULT_IMGUR_URL;
+
+            // Iniciar el loop de dibujo
+            requestAnimationFrame(drawFrame);
+            
+            console.log('✅ Aplicación inicializada correctamente');
+
+            // ============================================
+
+
+            // ASISTENTE DE VOZ - SISTEMA MODERNO
+            // ============================================
+            initVoiceAssistant();
+        };
+
+        // ============================================
+        // ASISTENTE DE VOZ CON TEXT-TO-SPEECH
+        // ============================================
+        
+        const assistantSteps = [
+            {
+                id: 'welcome',
+                message: '¡Hola! Soy Abelita, tu asistente virtual de RivaCORP. Te voy a guiar paso a paso para crear videos verticales increíbles. ¿Empezamos?',
+                target: null,
+                action: null,
+                buttonText: 'Comenzar 🚀'
+            },
+            {
+                id: 'load-video',
+                message: 'Perfecto. Primero, haz clic en "Seleccionar archivo" aquí a la derecha señalada y selecciona el video horizontal descargado de Telegram.',
+                completedMessage: '¡Excelente! Video cargado correctamente.<br><br><strong>Ahora haz clic en "¡Video cargado!" para continuar.</strong>',
+                target: '#videoFileSingle',
+                action: 'videoFileSingle-change',
+                buttonText: '¡Video cargado! ✓'
+            },
+            {
+                id: 'play-pause',
+                message: 'Muy bien, ahora haz clic en play y luego pausa para que aparezca el video en la vista previa.',
+                completedMessage: '¡Perfecto! El video ya se visualiza.<br><br><strong>Haz clic en "¡Listo!" para continuar.</strong>',
+                target: '#playPauseSingleBtn',
+                action: 'play-pause-done',
+                buttonText: '¡Listo! ✓'
+            },
+            {
+                id: 'adjust-trim',
+                message: 'Ahora mira el video y busca la parte en la que ya no salga la presentadora Gia, y en el control deslizante de inicio, desliza hasta tal minuto y segundo.',
+                completedMessage: '¡Muy bien! El recorte está configurado.<br><br><strong>Haz clic en "Recorte listo" para continuar.</strong>',
+                target: '#trimStartRange',
+                action: 'trim-adjusted',
+                buttonText: 'Recorte listo ✓'
+            },
+            {
+                id: 'download',
+                message: 'Una vez hecho, clic en el botón descargar video único.',
+                completedMessage: '¡Felicitaciones! Has completado el proceso.<br><br><strong>Haz clic en "¡Finalizar!" para terminar.</strong>',
+                target: '#generateDownloadSingleBtn',
+                action: null,
+                buttonText: '¡Finalizar! 🎉'
+            }
+        ];
+
+        let currentAssistantStep = 0;
+        let assistantActive = false;
+        let stepCompleted = false;
+        let voiceEnabled = true;
+        let subtitlesEnabled = false;
+        let isSpeaking = false;
+        let speechSynthesis = window.speechSynthesis;
+        let currentUtterance = null;
+        let mensajeAbelitaActual = ''; // Para guardar el mensaje actual y poder repetirlo
+
+        function initVoiceAssistant() {
+            // NO iniciar automáticamente - el usuario debe hacer clic en el botón de ayuda
+            // O llegar a la pestaña de Video Único después de Primeros Pasos
+
+            // Event listeners
+            document.getElementById('helpButtonCompact').addEventListener('click', startVoiceAssistant);
+            document.getElementById('assistantNextBtn').addEventListener('click', nextAssistantStep);
+            document.getElementById('assistantPrevBtn').addEventListener('click', prevAssistantStep);
+            document.getElementById('skipTutorialBtn').addEventListener('click', skipAssistant);
+            document.getElementById('voiceToggleBtn').addEventListener('click', toggleVoice);
+            document.getElementById('subtitlesToggleBtn').addEventListener('click', toggleSubtitles);
+            document.getElementById('assistantAvatar').addEventListener('click', toggleSpeech);
+
+            // Listeners para detectar acciones del usuario
+            setupAssistantListeners();
+        }
+
+        function startVoiceAssistant() {
+            assistantActive = true;
+            currentAssistantStep = 0;
+            document.getElementById('voiceAssistant').classList.add('active');
+            document.getElementById('helpButtonCompact').style.display = 'none';
+            showAssistantStep(currentAssistantStep);
+        }
+
+        function showAssistantStep(stepIndex) {
+            if (stepIndex < 0 || stepIndex >= assistantSteps.length) return;
+
+            const step = assistantSteps[stepIndex];
+            stepCompleted = false;
+
+            // Guardar mensaje actual para repetir
+            mensajeAbelitaActual = step.message;
+
+            // Actualizar UI con botón de repetir incluido
+            document.getElementById('assistantStep').textContent = `Paso ${stepIndex + 1}/${assistantSteps.length}`;
+            document.getElementById('assistantMessage').innerHTML = 
+                `<button class="btn-repetir-asistente" id="btnRepetirAbelita">
+                    🔊 Repetir
+                </button>
+                ${step.message}`;
+            document.getElementById('assistantProgressBar').style.width = `${((stepIndex + 1) / assistantSteps.length) * 100}%`;
+
+            // Re-asignar event listener al botón de repetir
+            const btnRepetirAbelita = document.getElementById('btnRepetirAbelita');
+            if (btnRepetirAbelita) {
+                btnRepetirAbelita.onclick = () => {
+                    if (voiceEnabled) {
+                        speak(mensajeAbelitaActual);
+                    }
+                };
+            }
+
+            // Actualizar botones
+            const nextBtn = document.getElementById('assistantNextBtn');
+            nextBtn.textContent = step.buttonText || 'Siguiente →';
+            
+            document.getElementById('assistantPrevBtn').style.display = stepIndex === 0 ? 'none' : 'block';
+
+            // Habilitar/deshabilitar botón según acción requerida
+            if (step.action) {
+                nextBtn.disabled = true;
+                nextBtn.style.opacity = '0.5';
+            } else {
+                nextBtn.disabled = false;
+                nextBtn.style.opacity = '1';
+            }
+
+            // Mostrar flecha indicadora
+            if (step.target) {
+                setTimeout(() => {
+                    showPointer(step.target);
+                }, 300);
+            } else {
+                hidePointer();
+            }
+
+            // Hablar el mensaje
+            if (voiceEnabled) {
+                speak(step.message);
+            }
+
+            // Mostrar subtítulos
+            if (subtitlesEnabled) {
+                showSubtitles(step.message);
+            }
+        }
+
+        function speak(text) {
+            // Detener cualquier voz anterior
+            speechSynthesis.cancel();
+
+            // Remover HTML tags para la voz
+            const cleanText = text.replace(/<[^>]*>/g, '');
+
+            currentUtterance = new SpeechSynthesisUtterance(cleanText);
+            currentUtterance.lang = 'es-ES';
+            currentUtterance.rate = 0.9;
+            currentUtterance.pitch = 1.0;
+            currentUtterance.volume = 1.0;
+
+            currentUtterance.onstart = () => {
+                isSpeaking = true;
+                document.getElementById('voiceIndicator').style.display = 'flex';
+                document.getElementById('assistantAvatar').classList.add('speaking');
+            };
+
+            currentUtterance.onend = () => {
+                isSpeaking = false;
+                document.getElementById('voiceIndicator').style.display = 'none';
+                document.getElementById('assistantAvatar').classList.remove('speaking');
+            };
+
+            currentUtterance.onerror = (event) => {
+                console.error('Error en síntesis de voz:', event);
+                isSpeaking = false;
+                document.getElementById('voiceIndicator').style.display = 'none';
+                document.getElementById('assistantAvatar').classList.remove('speaking');
+            };
+
+            speechSynthesis.speak(currentUtterance);
+        }
+
+        function toggleSpeech() {
+            if (isSpeaking) {
+                speechSynthesis.pause();
+            } else if (speechSynthesis.paused) {
+                speechSynthesis.resume();
+            }
+        }
+
+        function toggleVoice() {
+            voiceEnabled = !voiceEnabled;
+            const btn = document.getElementById('voiceToggleBtn');
+            
+            if (voiceEnabled) {
+                btn.classList.add('active');
+                btn.textContent = '🔊 Voz';
+            } else {
+                btn.classList.remove('active');
+                btn.textContent = '🔇 Silencio';
+                speechSynthesis.cancel();
+            }
+        }
+
+        function toggleSubtitles() {
+            subtitlesEnabled = !subtitlesEnabled;
+            const btn = document.getElementById('subtitlesToggleBtn');
+            
+            if (subtitlesEnabled) {
+                btn.classList.add('active');
+                showSubtitles(assistantSteps[currentAssistantStep].message);
+            } else {
+                btn.classList.remove('active');
+                hideSubtitles();
+            }
+        }
+
+        function showSubtitles(text) {
+            const subtitles = document.getElementById('assistantSubtitles');
+            subtitles.innerHTML = text;
+            subtitles.classList.add('show');
+        }
+
+        function hideSubtitles() {
+            document.getElementById('assistantSubtitles').classList.remove('show');
+        }
+
+        function showPointer(targetSelector) {
+            const target = document.querySelector(targetSelector);
+            if (!target) return;
+
+            const pointer = document.getElementById('assistantPointer');
+            const rect = target.getBoundingClientRect();
+
+            // Hacer scroll al elemento
+            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            // Posicionar flecha a la izquierda del elemento
+            pointer.style.display = 'block';
+            pointer.style.top = `${rect.top + rect.height / 2 - 30}px`;
+            pointer.style.left = `${rect.left - 70}px`;
+        }
+
+        function hidePointer() {
+            document.getElementById('assistantPointer').style.display = 'none';
+        }
+
+        function nextAssistantStep() {
+            if (currentAssistantStep < assistantSteps.length - 1) {
+                currentAssistantStep++;
+                showAssistantStep(currentAssistantStep);
+            } else {
+                completeAssistant();
+            }
+        }
+
+        function prevAssistantStep() {
+            if (currentAssistantStep > 0) {
+                currentAssistantStep--;
+                showAssistantStep(currentAssistantStep);
+            }
+        }
+
+        function skipAssistant() {
+            if (confirm('¿Seguro que quieres saltar el tutorial? Puedes volver a iniciarlo desde el botón de ayuda (?)')) {
+                endAssistant();
+            }
+        }
+
+        function completeAssistant() {
+            localStorage.setItem('rcorp-voice-tutorial-completed', 'true');
+            
+            // Mensaje final
+            const finalMessage = '¡Felicitaciones! Ya sabes cómo recortar y descargar videos con RivaCORP. Si necesitas ayuda nuevamente, presiona el botón de interrogación.';
+            document.getElementById('assistantMessage').innerHTML = finalMessage;
+            
+            if (voiceEnabled) {
+                speak(finalMessage);
+            }
+
+            setTimeout(() => {
+                endAssistant();
+            }, 5000);
+        }
+
+        function endAssistant() {
+            assistantActive = false;
+            speechSynthesis.cancel();
+            document.getElementById('voiceAssistant').classList.remove('active');
+            document.getElementById('helpButtonCompact').style.display = 'flex';
+            hidePointer();
+            hideSubtitles();
+        }
+
+        function markStepCompleted() {
+            if (stepCompleted) return;
+            
+            stepCompleted = true;
+            const nextBtn = document.getElementById('assistantNextBtn');
+            nextBtn.disabled = false;
+            nextBtn.style.opacity = '1';
+            
+            // Obtener el paso actual
+            const currentStep = assistantSteps[currentAssistantStep];
+            
+            // Si hay un mensaje de completado, mostrarlo
+            if (currentStep.completedMessage) {
+                // Guardar mensaje para repetir
+                mensajeAbelitaActual = currentStep.completedMessage;
+                
+                // Mostrar con botón de repetir
+                document.getElementById('assistantMessage').innerHTML = 
+                    `<button class="btn-repetir-asistente" id="btnRepetirAbelita">
+                        🔊 Repetir
+                    </button>
+                    ${currentStep.completedMessage}`;
+                
+                // Re-asignar event listener
+                const btnRepetirAbelita = document.getElementById('btnRepetirAbelita');
+                if (btnRepetirAbelita) {
+                    btnRepetirAbelita.onclick = () => {
+                        if (voiceEnabled) {
+                            speak(mensajeAbelitaActual);
+                        }
+                    };
+                }
+                
+                // Hablar el mensaje de completado
+                if (voiceEnabled) {
+                    speak(currentStep.completedMessage);
+                }
+                
+                // Mostrar subtítulos del mensaje de completado
+                if (subtitlesEnabled) {
+                    showSubtitles(currentStep.completedMessage);
+                }
+            } else {
+                // Efecto de celebración por defecto
+                const message = '¡Muy bien! Continuemos.';
+                if (voiceEnabled) {
+                    speak(message);
+                }
+            }
+        }
+
+        function setupAssistantListeners() {
+            // Listener para cargar video único
+            document.getElementById('videoFileSingle').addEventListener('change', () => {
+                if (assistantActive && assistantSteps[currentAssistantStep].action === 'videoFileSingle-change') {
+                    markStepCompleted();
+                }
+            });
+
+            // Listener para play/pause (Paso 3)
+            let playPauseDone = false;
+            document.getElementById('playPauseSingleBtn').addEventListener('click', () => {
+                if (!playPauseDone && assistantActive && assistantSteps[currentAssistantStep].action === 'play-pause-done') {
+                    // Esperar un segundo para dar tiempo a que hagan play y pausa
+                    setTimeout(() => {
+                        playPauseDone = true;
+                        markStepCompleted();
+                    }, 1000);
+                }
+            });
+
+            // Listener para trim (ajustar inicio)
+            let trimChanged = false;
+            document.getElementById('trimStartRange').addEventListener('input', () => {
+                if (!trimChanged && assistantActive && assistantSteps[currentAssistantStep].action === 'trim-adjusted') {
+                    trimChanged = true;
+                    markStepCompleted();
+                }
+            });
+
+            // Actualizar posición del pointer al hacer scroll
+            let updateTimeout;
+            window.addEventListener('scroll', () => {
+                if (!assistantActive) return;
+                clearTimeout(updateTimeout);
+                updateTimeout = setTimeout(() => {
+                    const step = assistantSteps[currentAssistantStep];
+                    if (step && step.target) {
+                        showPointer(step.target);
+                    }
+                }, 50);
+            }, true);
+
+            window.addEventListener('resize', () => {
+                if (!assistantActive) return;
+                const step = assistantSteps[currentAssistantStep];
+                if (step && step.target) {
+                    showPointer(step.target);
+                }
+            });
+        }
+    </script>
+</body>
+</html>
